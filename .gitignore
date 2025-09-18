@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.env
+mood_log.csv
+.streamlit/secrets.toml
