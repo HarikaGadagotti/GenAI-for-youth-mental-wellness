@@ -134,7 +134,7 @@ def get_coping_tip_for(mood):
 
 # ---------------- Streamlit UI ----------------
 st.set_page_config(page_title="Mindsight — Youth Mental Wellness", page_icon="🧠", layout="wide")
-st.title("🧠 Mindsight — Youth Mental Wellness (Google Gemini AI)")
+st.title("🧠 Mindsight — Youth Mental Wellness")
 
 # --- Language Selector ---
 user_lang = st.selectbox("🌍 Choose your language", list(LANGUAGES.keys()))
