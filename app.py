@@ -8,6 +8,7 @@ import google.generativeai as genai
 from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import random
+import time
 
 # ---------------- Load API key ----------------
 load_dotenv()
@@ -34,14 +35,6 @@ HELPLINES = {
     "UK": {"Samaritans": "116 123"}
 }
 
-SYSTEM_PROMPT = (
-    "You are a compassionate, non-judgmental mental wellness assistant for young people. "
-    "Respond with empathy, reflective listening, and short supportive suggestions. "
-    "Do not provide clinical diagnoses. If the user mentions self-harm or suicide, "
-    "respond with a brief statement acknowledging distress and provide crisis resources and encourage seeking immediate help. "
-    "Keep responses concise (2-5 sentences) and suggest a simple coping action the user can try right now."
-)
-
 LANGUAGES = {"English":"en", "Hindi":"hi", "Telugu":"te"}
 
 AFFIRMATIONS = [
@@ -50,6 +43,13 @@ AFFIRMATIONS = [
     "🌈 You are doing your best, and that’s enough.",
     "☀️ Believe in yourself—you’ve got this!",
     "💖 You matter, and your feelings are valid."
+]
+
+QUOTES = [
+    "💡 You don’t have to control your thoughts. You just have to stop letting them control you. – Dan Millman",
+    "💡 Self-care is not a luxury, it’s a necessity.",
+    "💡 This too shall pass.",
+    "💡 Healing takes time, and asking for help is a courageous step.",
 ]
 
 # ---------------- Functions ----------------
@@ -139,17 +139,27 @@ def plot_wordcloud(notes):
     ax.axis("off")
     return fig
 
+def wellness_score(df):
+    if df.empty:
+        return 50
+    score_map = {"😃 Happy": 2, "😢 Sad": -1, "😰 Anxious": -1, "😡 Angry": -2, "😓 Stressed": -1}
+    score = df["mood"].map(score_map).sum() + 50
+    return max(0, min(100, score))
+
 # ---------------- Streamlit UI ----------------
 st.set_page_config(page_title="Mindsight — Youth Mental Wellness", page_icon="🧠", layout="wide")
-st.title("🧠 Mindsight — Youth Mental Wellness (Google Gemini AI)")
 
-# --- Language Selector ---
+st.title("🧠 Mindsight — Youth Mental Wellness")
+st.caption("AI-powered companion for daily mental wellness tracking, support, and reflection.")
+
 user_lang = st.selectbox("🌍 Choose your language", list(LANGUAGES.keys()))
 
-left, right = st.columns([2,1])
+# --- Tabs for better UI ---
+tabs = st.tabs(["💬 Chat", "📓 Mood Logger", "📊 Insights", "📖 Journaling", "🧘 Exercises"])
 
-with left:
-    st.header("💬 Chat with the AI Companion")
+# --- Chat ---
+with tabs[0]:
+    st.subheader("💬 Chat with Mindsight")
     user_text = st.text_area("Talk to Mindsight", max_chars=1000, key="chat_input")
     if st.button("Send", key="send"):
         if is_crisis(user_text):
@@ -161,98 +171,89 @@ with left:
             st.markdown("**Mindsight:**")
             st.write(reply)
 
-    st.markdown("---")
-    st.header("📓 Mood Logger")
-
-    mood = st.radio("Select your mood:", ["😃 Happy","😢 Sad","😰 Anxious","😡 Angry","😓 Stressed"])
+# --- Mood Logger ---
+with tabs[1]:
+    st.subheader("📓 Log Your Mood")
+    mood = st.radio("How are you feeling?", ["😃 Happy","😢 Sad","😰 Anxious","😡 Angry","😓 Stressed"])
     note = st.text_area("Optional note (private)", key="note")
+    anon_mode = st.checkbox("🔒 Anonymous Mode (don’t save moods)")
     if st.button("Log Mood", key="log"):
-        save_mood(mood, note)
-        st.success(f"Saved mood: {mood}")
+        if not anon_mode:
+            save_mood(mood, note)
+            st.success(f"Saved mood: {mood}")
+        else:
+            st.info("Mood logged in session only (not saved).")
         st.info(get_coping_tip_for(mood))
         st.success(random.choice(AFFIRMATIONS))
 
-with right:
-    st.header("📈 Summary")
+# --- Insights ---
+with tabs[2]:
+    st.subheader("📊 Your Insights")
     df = load_moods()
-    st.metric("Total Logs", len(df))
-    st.metric("Current Streak (days)", calculate_streak())
-    st.markdown("**Quick tips**")
-    st.write("- Use the chat for support.\n- Log mood daily to build a streak.\n- Check weekly reports below.")
+    st.metric("📝 Total Logs", len(df))
+    st.metric("🔥 Current Streak", calculate_streak())
+    st.metric("🧠 Wellness Score", f"{wellness_score(df)}/100")
 
-    today_str = date.today().isoformat()
-    if df.empty or today_str not in df["date"].astype(str).values:
-        st.warning("💡 You haven’t logged your mood today!")
+    if not df.empty:
+        mood_counts = df.groupby("date")["mood"].value_counts().unstack().fillna(0)
+        st.line_chart(mood_counts)
 
-st.markdown("---")
-st.header("📊 Mood Trend")
-df = load_moods()
-if not df.empty:
-    mood_counts = df.groupby("date")["mood"].value_counts().unstack().fillna(0)
-    st.line_chart(mood_counts)
-else:
-    st.info("No mood data yet.")
+        last_week = date.today() - timedelta(days=7)
+        weekly_df = df[pd.to_datetime(df["date"]) >= pd.to_datetime(last_week)]
+        if not weekly_df.empty:
+            top_mood = weekly_df["mood"].mode()[0]
+            st.success(f"Most frequent mood this week: {top_mood}")
+            st.bar_chart(weekly_df["mood"].value_counts())
 
-# --- Weekly Summary ---
-st.markdown("---")
-st.header("📅 Weekly Mood Summary")
-if not df.empty:
-    last_week = date.today() - timedelta(days=7)
-    weekly_df = df[pd.to_datetime(df["date"]) >= pd.to_datetime(last_week)]
-    if not weekly_df.empty:
-        top_mood = weekly_df["mood"].mode()[0]
-        st.success(f"Most frequent mood this week: {top_mood}")
-        st.bar_chart(weekly_df["mood"].value_counts())
-    else:
-        st.info("No entries for the past week.")
-else:
-    st.info("No data for summary yet.")
+        if df["note"].notna().any():
+            st.subheader("☁️ Word Cloud of Your Notes")
+            notes = df["note"].dropna().tolist()
+            fig = plot_wordcloud(notes)
+            if fig:
+                st.pyplot(fig)
 
-# --- Word Cloud ---
-st.markdown("---")
-st.header("☁️ Word Cloud of Your Notes")
-if not df.empty and df["note"].notna().any():
-    notes = df["note"].dropna().tolist()
-    fig = plot_wordcloud(notes)
-    if fig:
-        st.pyplot(fig)
-else:
-    st.info("No notes to generate word cloud yet.")
+        st.subheader("📂 Mood History")
+        hist = df.sort_values("date_time", ascending=False).reset_index(drop=True)
+        st.dataframe(hist, height=300)
+        csv = hist.to_csv(index=False).encode()
+        st.download_button("Download mood logs (CSV)", csv, "mood_log.csv", "text/csv")
 
-# --- History ---
-st.markdown("---")
-st.header("📂 Mood History")
-if not df.empty:
-    hist = df.sort_values("date_time", ascending=False).reset_index(drop=True)
-    st.dataframe(hist)
-    csv = hist.to_csv(index=False).encode()
-    st.download_button("Download mood logs (CSV)", csv, "mood_log.csv", "text/csv")
-else:
-    st.info("No mood logs yet.")
+# --- Journaling ---
+with tabs[3]:
+    st.subheader("📖 Journaling")
+    entry = st.text_area("Write your thoughts here...")
+    if st.button("Analyze My Journal"):
+        if entry.strip():
+            with st.spinner("Analyzing..."):
+                response = genai.GenerativeModel("gemini-1.5-flash").generate_content(
+                    f"Analyze this journal entry for emotional tone and give supportive feedback:\n{entry}"
+                )
+                st.write(response.text)
+        else:
+            st.warning("Write something before analyzing.")
 
+# --- Exercises ---
+with tabs[4]:
+    st.subheader("🧘 Guided Breathing Exercise")
+    if st.button("Start 30-sec Breathing"):
+        for i in range(3):
+            st.write("🌬️ Inhale...")
+            time.sleep(4)
+            st.write("😌 Exhale...")
+            time.sleep(4)
+        st.success("Done! Feeling calmer?")
 
-#Daily Affirmation
-st.header("🌟 Daily Affirmation")
-if "last_affirmation" not in st.session_state or st.session_state["last_affirmation_date"] != str(date.today()):
-    try:
-        response = genai.GenerativeModel("gemini-1.5-flash").generate_content(
-            "Generate a short positive daily affirmation (1 sentence)."
-        )
-        st.session_state["last_affirmation"] = response.text
-        st.session_state["last_affirmation_date"] = str(date.today())
-    except:
-        st.session_state["last_affirmation"] = "You are strong, and today is full of possibilities."
-st.success(st.session_state["last_affirmation"])
+    st.subheader("🌟 Daily Affirmation")
+    if "last_affirmation" not in st.session_state or st.session_state["last_affirmation_date"] != str(date.today()):
+        try:
+            response = genai.GenerativeModel("gemini-1.5-flash").generate_content(
+                "Generate a short positive daily affirmation (1 sentence)."
+            )
+            st.session_state["last_affirmation"] = response.text
+            st.session_state["last_affirmation_date"] = str(date.today())
+        except:
+            st.session_state["last_affirmation"] = random.choice(AFFIRMATIONS)
+    st.success(st.session_state["last_affirmation"])
 
-anon_mode = st.checkbox("🔒 Anonymous Mode (don’t save moods to file)")
-if st.button("Log Mood"):
-    if not anon_mode:
-        save_mood(mood, note)
-        st.success(f"Saved mood: {mood}")
-    else:
-        st.info("Mood logged in session only (not saved).")
-
-
-
-st.markdown("---")
-
+    st.subheader("💡 Inspirational Quote")
+    st.info(random.choice(QUOTES))
