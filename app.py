@@ -244,16 +244,21 @@ with tabs[4]:
         st.success("Done! Feeling calmer?")
 
     st.subheader("🌟 Daily Affirmation")
-    if "last_affirmation" not in st.session_state or st.session_state["last_affirmation_date"] != str(date.today()):
+    if "last_affirmation" not in st.session_state:
+        st.session_state["last_affirmation"] = None
+    if "last_affirmation_date" not in st.session_state:
+        st.session_state["last_affirmation_date"] = ""
+
+    if st.session_state["last_affirmation_date"] != str(date.today()):
         try:
             response = genai.GenerativeModel("gemini-1.5-flash").generate_content(
-                "Generate a short positive daily affirmation (1 sentence)."
+            "Generate a short positive daily affirmation (1 sentence)."
             )
             st.session_state["last_affirmation"] = response.text
             st.session_state["last_affirmation_date"] = str(date.today())
         except:
-            st.session_state["last_affirmation"] = random.choice(AFFIRMATIONS)
-    st.success(st.session_state["last_affirmation"])
+            st.session_state["last_affirmation"] = "You are strong, and today is full of possibilities."
+
 
     st.subheader("💡 Inspirational Quote")
     st.info(random.choice(QUOTES))
